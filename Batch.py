@@ -13,17 +13,19 @@ def nopeak_mask(size, opt):
     return np_mask
 
 def create_masks(src, trg, opt):
-    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     src_mask = (src != opt.src_pad).unsqueeze(-2)
+    src_mask = src_mask.to(device)
 
     if trg is not None:
         trg_mask = (trg != opt.trg_pad).unsqueeze(-2)
+        trg_mask = trg_mask.to(device)
         size = trg.size(1) # get seq_len for matrix
         np_mask = nopeak_mask(size, opt)
         if trg.is_cuda:
-            np_mask.cuda()
+            np_mask = np_mask.to(device)
         trg_mask = trg_mask & np_mask
-        
+
     else:
         trg_mask = None
     return src_mask, trg_mask
@@ -42,7 +44,7 @@ class MyIterator(data.Iterator):
                     for b in random_shuffler(list(p_batch)):
                         yield b
             self.batches = pool(self.data(), self.random_shuffler)
-            
+
         else:
             self.batches = []
             for b in data.batch(self.data(), self.batch_size,

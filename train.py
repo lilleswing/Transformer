@@ -9,40 +9,43 @@ from Batch import create_masks
 import dill as pickle
 
 def train_model(model, opt):
-    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     print("training model...")
     model.train()
     start = time.time()
     if opt.checkpoint > 0:
         cptime = time.time()
-                 
+
     for epoch in range(opt.epochs):
 
         total_loss = 0
         if opt.floyd is False:
             print("   %dm: epoch %d [%s]  %d%%  loss = %s" %\
             ((time.time() - start)//60, epoch + 1, "".join(' '*20), 0, '...'), end='\r')
-        
+
         if opt.checkpoint > 0:
             torch.save(model.state_dict(), 'weights/model_weights')
-                    
-        for i, batch in enumerate(opt.train): 
 
-            src = batch.src.transpose(0,1)
+        for i, batch in enumerate(opt.train):
+
+            src = batch.src.transpose(0,1).to(device)
+            src = src.to(device)
             trg = batch.trg.transpose(0,1)
             trg_input = trg[:, :-1]
+            trg_input = trg_input.to(device)
             src_mask, trg_mask = create_masks(src, trg_input, opt)
             preds = model(src, trg_input, src_mask, trg_mask)
-            ys = trg[:, 1:].contiguous().view(-1)
+            ys = trg[:, 1:].contiguous().view(-1).to(device)
             opt.optimizer.zero_grad()
-            loss = F.cross_entropy(preds.view(-1, preds.size(-1)), ys, ignore_index=opt.trg_pad)
+            loss = F.cross_entropy(preds.view(-1, preds.size(-1)).to(device), ys, ignore_index=opt.trg_pad)
             loss.backward()
             opt.optimizer.step()
-            if opt.SGDR == True: 
+            if opt.SGDR == True:
                 opt.sched.step()
-            
+
             total_loss += loss.item()
-            
+
             if (i + 1) % opt.printevery == 0:
                  p = int(100 * (i + 1) / opt.train_len)
                  avg_loss = total_loss/opt.printevery
@@ -53,12 +56,12 @@ def train_model(model, opt):
                     print("   %dm: epoch %d [%s%s]  %d%%  loss = %.3f" %\
                     ((time.time() - start)//60, epoch + 1, "".join('#'*(p//5)), "".join(' '*(20-(p//5))), p, avg_loss))
                  total_loss = 0
-            
+
             if opt.checkpoint > 0 and ((time.time()-cptime)//60) // opt.checkpoint >= 1:
                 torch.save(model.state_dict(), 'weights/model_weights')
                 cptime = time.time()
-   
-   
+
+
         print("%dm: epoch %d [%s%s]  %d%%  loss = %.3f\nepoch %d complete, loss = %.03f" %\
         ((time.time() - start)//60, epoch + 1, "".join('#'*(100//5)), "".join(' '*(20-(100//5))), 100, avg_loss, epoch + 1, avg_loss))
 
@@ -86,11 +89,11 @@ def main():
     parser.add_argument('-checkpoint', type=int, default=0)
 
     opt = parser.parse_args()
-    
+
     opt.device = 0 if opt.no_cuda is False else -1
     if opt.device == 0:
         assert torch.cuda.is_available()
-    
+
     read_data(opt)
     SRC, TRG = create_fields(opt)
     opt.train = create_dataset(opt, SRC, TRG)
@@ -102,12 +105,12 @@ def main():
 
     if opt.checkpoint > 0:
         print("model weights will be saved every %d minutes and at end of epoch to directory weights/"%(opt.checkpoint))
-    
+
     if opt.load_weights is not None and opt.floyd is not None:
         os.mkdir('weights')
         pickle.dump(SRC, open('weights/SRC.pkl', 'wb'))
         pickle.dump(TRG, open('weights/TRG.pkl', 'wb'))
-    
+
     train_model(model, opt)
 
     if opt.floyd is False:
@@ -123,7 +126,7 @@ def yesno(response):
 def promptNextAction(model, opt, SRC, TRG):
 
     saved_once = 1 if opt.load_weights is not None or opt.checkpoint > 0 else 0
-    
+
     if opt.load_weights is not None:
         dst = opt.load_weights
     if opt.checkpoint > 0:
@@ -148,14 +151,14 @@ def promptNextAction(model, opt, SRC, TRG):
                         if res == 'n':
                             continue
                     break
-            
+
             print("saving weights to " + dst + "/...")
             torch.save(model.state_dict(), f'{dst}/model_weights')
             if saved_once == 0:
                 pickle.dump(SRC, open(f'{dst}/SRC.pkl', 'wb'))
                 pickle.dump(TRG, open(f'{dst}/TRG.pkl', 'wb'))
                 saved_once = 1
-            
+
             print("weights and field pickles saved to " + dst)
 
         res = yesno(input("train for more epochs? [y/n] : "))
