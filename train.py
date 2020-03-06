@@ -131,8 +131,8 @@ def promptNextAction(model, opt, SRC, TRG):
         pass
 
     torch.save(model.state_dict(), f'{dst}/model_weights')
-    pickle.dump(SRC, open(f'{dst}/SRC.pkl', 'wb'))
-    pickle.dump(TRG, open(f'{dst}/TRG.pkl', 'wb'))
+    #pickle.dump(SRC, open(f'{dst}/SRC.pkl', 'wb'))
+    #pickle.dump(TRG, open(f'{dst}/TRG.pkl', 'wb'))
     opt.epochs = 10
     train_model(model, opt)
 
